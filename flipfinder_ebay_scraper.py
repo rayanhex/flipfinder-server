@@ -3,6 +3,7 @@ import urllib.parse
 import urllib.request
 import ssl
 import time
+import random
 from bs4 import BeautifulSoup
 
 def get_sold_listings_for_flipfinder(query):
@@ -68,7 +69,7 @@ def get_sold_listings_for_flipfinder(query):
 
 # Original functions adapted from the GitHub project
 def __GetHTML(query, country='us', condition='all', type='all', alreadySold=True):
-    """Original GetHTML function from the GitHub project"""
+    """Original GetHTML function from the GitHub project with enhanced anti-detection"""
     
     countryDict = {
         'us': '.com',
@@ -108,15 +109,35 @@ def __GetHTML(query, country='us', condition='all', type='all', alreadySold=True
         ssl_context.check_hostname = False
         ssl_context.verify_mode = ssl.CERT_NONE
         
-        # Use original headers approach but add SSL context
+        # Randomize User-Agent to avoid detection
+        user_agents = [
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:122.0) Gecko/20100101 Firefox/122.0',
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15'
+        ]
+        
+        selected_ua = random.choice(user_agents)
+        print(f"Using User-Agent: {selected_ua}")
+        
+        # Enhanced headers to look more like a real browser
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            'User-Agent': selected_ua,
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'DNT': '1',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1'
         }
         
         request = urllib.request.Request(url, headers=headers)
         
-        # Add delay to avoid being blocked
-        time.sleep(2)
+        # Enhanced delay with randomization (3-7 seconds)
+        delay = random.uniform(3.0, 7.0)
+        print(f"Waiting {delay:.1f} seconds before request to avoid rate limiting...")
+        time.sleep(delay)
         
         response = urllib.request.urlopen(request, context=ssl_context, timeout=30)
         html_content = response.read()
@@ -129,6 +150,13 @@ def __GetHTML(query, country='us', condition='all', type='all', alreadySold=True
         
         print(f"Successfully fetched {len(html_content)} characters")
         
+        # Check if we got blocked (common eBay block indicators)
+        if 'blocked' in html_content.lower() or 'captcha' in html_content.lower() or len(html_content) < 10000:
+            print("⚠️ Possible rate limiting detected - short response or block indicators found")
+            print(f"Response length: {len(html_content)} characters")
+            if len(html_content) < 1000:
+                print("Response content:", html_content[:500])
+        
         # Save debug file
         with open('debug_ebay_original.html', 'w', encoding='utf-8') as f:
             f.write(html_content)
@@ -139,6 +167,8 @@ def __GetHTML(query, country='us', condition='all', type='all', alreadySold=True
         
     except Exception as e:
         print(f"Error in __GetHTML: {str(e)}")
+        if "HTTP Error 429" in str(e) or "Too Many Requests" in str(e):
+            print("🚫 RATE LIMITED BY EBAY - Need to wait longer between requests")
         return None
 
 def __ParseItems(soup):
