@@ -6,66 +6,86 @@ import time
 import random
 from bs4 import BeautifulSoup
 
-def get_sold_listings_for_flipfinder(query):
+def get_sold_listings_for_flipfinder(query, max_retries=2):
     """
     Get the 3 most recent sold listings from eBay US for FlipFinder analysis
-    Uses the original EbayScraper approach but adapted for FlipFinder
+    Uses the original EbayScraper approach but adapted for FlipFinder with retry logic
     """
-    try:
-        print(f"Searching eBay for sold listings: {query}")
-        
-        # Use the original __GetHTML function approach
-        soup = __GetHTML(query, country='us', condition='all', type='all', alreadySold=True)
-        
-        if not soup:
+    
+    for attempt in range(max_retries + 1):
+        try:
+            if attempt > 0:
+                # Exponential backoff for retries
+                retry_delay = 5 * (2 ** (attempt - 1))  # 5s, 10s, 20s...
+                print(f"Retry attempt {attempt} after {retry_delay} seconds...")
+                time.sleep(retry_delay)
+            
+            print(f"Searching eBay for sold listings (attempt {attempt + 1}): {query}")
+            
+            # Use the original __GetHTML function approach
+            soup = __GetHTML(query, country='us', condition='all', type='all', alreadySold=True)
+            
+            if not soup:
+                if attempt < max_retries:
+                    print(f"Failed to fetch eBay data, retrying... (attempt {attempt + 1}/{max_retries + 1})")
+                    continue
+                else:
+                    return {
+                        'success': False,
+                        'error': 'eBay temporarily unavailable - please try again in a few moments',
+                        'items': [],
+                        'total': 0,
+                        'average_price': 0
+                    }
+            
+            # Use the original __ParseItems function approach
+            all_sold_items = __ParseItems(soup)
+            
+            if not all_sold_items:
+                if attempt < max_retries:
+                    print(f"No items found, retrying... (attempt {attempt + 1}/{max_retries + 1})")
+                    continue
+                else:
+                    return {
+                        'success': False,
+                        'error': f'No recent sold listings found for "{query}" on eBay. Try a different search term or check the spelling.',
+                        'items': [],
+                        'total': 0,
+                        'average_price': 0
+                    }
+            
+            # Get the 3 most recent sold items
+            recent_items = all_sold_items[:3]
+            
+            # Calculate average price from the recent items
+            prices = [item['price']['value'] for item in recent_items]
+            average_price = sum(prices) / len(prices) if prices else 0
+            
+            print(f"✅ SUCCESS: Found {len(recent_items)} recent sold items")
+            print(f"Individual prices: {prices}")
+            print(f"Average price: ${average_price:.2f}")
+            
             return {
-                'success': False,
-                'error': 'Failed to fetch eBay data',
-                'items': [],
-                'total': 0,
-                'average_price': 0
+                'success': True,
+                'items': recent_items,
+                'total': len(recent_items),
+                'average_price': round(average_price, 2),
+                'note': 'Based on actual sold listings from eBay'
             }
-        
-        # Use the original __ParseItems function approach
-        all_sold_items = __ParseItems(soup)
-        
-        if not all_sold_items:
-            return {
-                'success': False,
-                'error': 'No sold listings found for this search term',
-                'items': [],
-                'total': 0,
-                'average_price': 0
-            }
-        
-        # Get the 3 most recent sold items
-        recent_items = all_sold_items[:3]
-        
-        # Calculate average price from the recent items
-        prices = [item['price']['value'] for item in recent_items]
-        average_price = sum(prices) / len(prices) if prices else 0
-        
-        print(f"Found {len(recent_items)} recent sold items")
-        print(f"Individual prices: {prices}")
-        print(f"Average price: ${average_price:.2f}")
-        
-        return {
-            'success': True,
-            'items': recent_items,
-            'total': len(recent_items),
-            'average_price': round(average_price, 2),
-            'note': 'Based on actual sold listings from eBay'
-        }
-        
-    except Exception as e:
-        print(f"Error in get_sold_listings_for_flipfinder: {str(e)}")
-        return {
-            'success': False,
-            'error': f'Scraping error: {str(e)}',
-            'items': [],
-            'total': 0,
-            'average_price': 0
-        }
+            
+        except Exception as e:
+            print(f"Error in attempt {attempt + 1}: {str(e)}")
+            if attempt < max_retries:
+                print(f"Retrying due to error... (attempt {attempt + 1}/{max_retries + 1})")
+                continue
+            else:
+                return {
+                    'success': False,
+                    'error': f'eBay search temporarily unavailable. Please try again in a moment.',
+                    'items': [],
+                    'total': 0,
+                    'average_price': 0
+                }
 
 # Original functions adapted from the GitHub project
 def __GetHTML(query, country='us', condition='all', type='all', alreadySold=True):
@@ -235,7 +255,7 @@ def __ParseItems(soup):
                 data.append(itemData)
                 print(f"Successfully parsed: {title} - ${price}")
                 
-                # Stop after getting enough items
+                # Stop after getting 10 items for Grok filtering
                 if len(data) >= 10:
                     break
                     
