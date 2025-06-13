@@ -21,7 +21,8 @@ def get_sold_listings_for_flipfinder(query):
                 'success': False,
                 'error': 'Failed to fetch eBay data',
                 'items': [],
-                'total': 0
+                'total': 0,
+                'average_price': 0
             }
         
         # Use the original __ParseItems function approach
@@ -32,18 +33,26 @@ def get_sold_listings_for_flipfinder(query):
                 'success': False,
                 'error': 'No sold listings found for this search term',
                 'items': [],
-                'total': 0
+                'total': 0,
+                'average_price': 0
             }
         
         # Get the 3 most recent sold items
         recent_items = all_sold_items[:3]
         
+        # Calculate average price from the recent items
+        prices = [item['price']['value'] for item in recent_items]
+        average_price = sum(prices) / len(prices) if prices else 0
+        
         print(f"Found {len(recent_items)} recent sold items")
+        print(f"Individual prices: {prices}")
+        print(f"Average price: ${average_price:.2f}")
         
         return {
             'success': True,
             'items': recent_items,
             'total': len(recent_items),
+            'average_price': round(average_price, 2),
             'note': 'Based on actual sold listings from eBay'
         }
         
@@ -53,7 +62,8 @@ def get_sold_listings_for_flipfinder(query):
             'success': False,
             'error': f'Scraping error: {str(e)}',
             'items': [],
-            'total': 0
+            'total': 0,
+            'average_price': 0
         }
 
 # Original functions adapted from the GitHub project
@@ -251,6 +261,7 @@ if __name__ == "__main__":
     print("\n=== TEST RESULTS ===")
     print(f"Success: {result['success']}")
     print(f"Total items: {result['total']}")
+    print(f"Average price: ${result['average_price']}")
     
     if result['success'] and result['items']:
         print(f"\nFirst item:")
