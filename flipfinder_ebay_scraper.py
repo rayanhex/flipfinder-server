@@ -8,7 +8,7 @@ from bs4 import BeautifulSoup
 
 def get_sold_listings_for_flipfinder(query, max_retries=2):
     """
-    Get the 3 most recent sold listings from eBay US for FlipFinder analysis
+    Get UP TO 10 most recent sold listings from eBay US for FlipFinder analysis
     Uses the original EbayScraper approach but adapted for FlipFinder with retry logic
     """
     
@@ -20,7 +20,8 @@ def get_sold_listings_for_flipfinder(query, max_retries=2):
                 print(f"Retry attempt {attempt} after {retry_delay} seconds...")
                 time.sleep(retry_delay)
             
-            print(f"Searching eBay for sold listings (attempt {attempt + 1}): {query}")
+            print(f"=== SCRAPER ATTEMPT {attempt + 1} ===")
+            print(f"Searching eBay for sold listings: {query}")
             
             # Use the original __GetHTML function approach
             soup = __GetHTML(query, country='us', condition='all', type='all', alreadySold=True)
@@ -54,23 +55,20 @@ def get_sold_listings_for_flipfinder(query, max_retries=2):
                         'average_price': 0
                     }
             
-            # Get the 3 most recent sold items
-            recent_items = all_sold_items[:3]
+            # CRITICAL FIX: Get UP TO 10 most recent sold items for Grok filtering
+            recent_items = all_sold_items[:10]  # CHANGED FROM [:3] TO [:10]
             
-            # Calculate average price from the recent items
-            prices = [item['price']['value'] for item in recent_items]
-            average_price = sum(prices) / len(prices) if prices else 0
-            
-            print(f"✅ SUCCESS: Found {len(recent_items)} recent sold items")
-            print(f"Individual prices: {prices}")
-            print(f"Average price: ${average_price:.2f}")
+            print(f"✅ SCRAPER SUCCESS: Found {len(all_sold_items)} total items, returning {len(recent_items)} for filtering")
+            print(f"Items being returned to extension:")
+            for i, item in enumerate(recent_items):
+                print(f"  {i+1}. {item['title']} - ${item['price']['value']}")
             
             return {
                 'success': True,
-                'items': recent_items,
+                'items': recent_items,  # Return UP TO 10 items for Grok filtering
                 'total': len(recent_items),
-                'average_price': round(average_price, 2),
-                'note': 'Based on actual sold listings from eBay'
+                'average_price': 0,  # Will be calculated after Grok filtering in extension
+                'note': f'Found {len(recent_items)} eBay sold listings (ready for AI filtering)'
             }
             
         except Exception as e:
@@ -121,7 +119,7 @@ def __GetHTML(query, country='us', condition='all', type='all', alreadySold=True
     parsedQuery = urllib.parse.quote(query).replace('%20', '+')
     url = f'https://www.ebay{countryDict[country]}/sch/i.html?_from=R40&_nkw={parsedQuery}{alreadySoldString}{conditionDict[condition]}{typeDict[type]}'
     
-    print(f"Using original URL format: {url}")
+    print(f"Fetching eBay URL: {url}")
     
     try:
         # Create SSL context to handle certificate issues
@@ -169,7 +167,7 @@ def __GetHTML(query, country='us', condition='all', type='all', alreadySold=True
         return None
 
 def __ParseItems(soup):
-    """Original ParseItems function adapted from GitHub project"""
+    """Original ParseItems function adapted from GitHub project - ENHANCED TO GET MORE ITEMS"""
     try:
         # Use the original selector from the GitHub project
         rawItems = soup.find_all('div', {'class': 's-item__info clearfix'})
@@ -196,7 +194,8 @@ def __ParseItems(soup):
         data = []
         
         # Parse items using original approach but skip first item (usually ad)
-        for item in rawItems[1:]:
+        # ENHANCED: Try to get more items (up to 15 to ensure we get 10 good ones)
+        for item in rawItems[1:]:  # Skip first item (usually ad)
             try:
                 # Get item data using original approach
                 title_elem = item.find(class_="s-item__title")
@@ -255,14 +254,15 @@ def __ParseItems(soup):
                 data.append(itemData)
                 print(f"Successfully parsed: {title} - ${price}")
                 
-                # Stop after getting 10 items for Grok filtering
-                if len(data) >= 10:
+                # ENHANCED: Stop after getting 15 items (so we have enough to return 10)
+                if len(data) >= 15:
                     break
                     
             except Exception as e:
                 print(f"Error parsing individual item: {str(e)}")
                 continue
         
+        print(f"Final parsed items count: {len(data)}")
         return data
         
     except Exception as e:
@@ -282,7 +282,7 @@ def __ParseRawPrice(string):
 
 # Test function
 if __name__ == "__main__":
-    print("Testing with ORIGINAL GitHub approach...")
+    print("Testing with ENHANCED 10-item approach...")
     result = get_sold_listings_for_flipfinder("iPhone 12")
     
     print("\n=== TEST RESULTS ===")
@@ -291,10 +291,8 @@ if __name__ == "__main__":
     print(f"Average price: ${result['average_price']}")
     
     if result['success'] and result['items']:
-        print(f"\nFirst item:")
-        item = result['items'][0]
-        print(f"Title: {item['title']}")
-        print(f"Price: ${item['price']['value']}")
-        print(f"URL: {item['itemWebUrl']}")
+        print(f"\nItems returned:")
+        for i, item in enumerate(result['items']):
+            print(f"  {i+1}. {item['title']} - ${item['price']['value']}")
     else:
         print(f"Error: {result.get('error', 'Unknown error')}")
