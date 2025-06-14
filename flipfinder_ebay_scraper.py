@@ -166,128 +166,158 @@ def __GetHTML(query, country='us', condition='all', type='all', alreadySold=True
         return None
 
 def __ParseItems(soup):
-    """Original ParseItems function adapted from GitHub project - ENHANCED TO GET MORE ITEMS"""
+    """Completely rewritten ParseItems function with proper syntax"""
     try:
-        # Use the original selector from the GitHub project
-        rawItems = soup.find_all('div', {'class': 's-item__info clearfix'})
+        print("Starting item parsing...")
         
-        print(f"Found {len(rawItems)} items with original selector")
+        # Try multiple selectors with proper syntax
+        rawItems = []
         
-        # If original selector doesn't work, try alternative
+        # Method 1: Try class attribute with string
+        try:
+            rawItems = soup.find_all('div', class_='s-item__info clearfix')
+            print(f"Method 1: Found {len(rawItems)} items with class string")
+        except Exception as e:
+            print(f"Method 1 failed: {e}")
+        
+        # Method 2: Try CSS selector
         if not rawItems:
-            rawItems = soup.find_all('div', class_=re.compile('s-item__info'))
-            print(f"Found {len(rawItems)} items with alternative selector")
+            try:
+                rawItems = soup.select('div.s-item__info.clearfix')
+                print(f"Method 2: Found {len(rawItems)} items with CSS selector")
+            except Exception as e:
+                print(f"Method 2 failed: {e}")
+        
+        # Method 3: Try broader selector
+        if not rawItems:
+            try:
+                rawItems = soup.select('.s-item__info')
+                print(f"Method 3: Found {len(rawItems)} items with broad selector")
+            except Exception as e:
+                print(f"Method 3 failed: {e}")
+        
+        # Method 4: Try item wrapper
+        if not rawItems:
+            try:
+                rawItems = soup.select('.s-item__wrapper')
+                print(f"Method 4: Found {len(rawItems)} items with wrapper selector")
+            except Exception as e:
+                print(f"Method 4 failed: {e}")
+        
+        # Method 5: Last resort
+        if not rawItems:
+            try:
+                rawItems = soup.select('.s-item')
+                print(f"Method 5: Found {len(rawItems)} items with simple selector")
+            except Exception as e:
+                print(f"Method 5 failed: {e}")
         
         if not rawItems:
-            # Try even more selectors
-            for selector in ['div.s-item__wrapper', 'div.s-item', '.srp-results .s-item']:
-                rawItems = soup.select(selector)
-                if rawItems:
-                    print(f"Found {len(rawItems)} items with selector: {selector}")
-                    break
-        
-        if not rawItems:
-            print("No items found with any selector")
+            print("No items found with any selector method")
             return []
         
         data = []
         
-        # Parse items using original approach but skip first item (usually ad)
-        # ENHANCED: Try to get more items (up to 15 to ensure we get 10 good ones)
-        for item in rawItems[1:]:  # Skip first item (usually ad)
+        # Parse items - skip first item (usually ad)
+        items_to_process = rawItems[1:] if len(rawItems) > 1 else rawItems
+        
+        for i, item in enumerate(items_to_process):
             try:
-                # Get item data using original approach
-                title_elem = item.find(class_="s-item__title")
-                if not title_elem:
-                    continue
-                    
-                title_span = title_elem.find('span')
-                title = title_span.get_text(strip=True) if title_span else title_elem.get_text(strip=True)
+                # Get title
+                title = None
+                title_elem = item.find(class_='s-item__title')
+                if title_elem:
+                    title_span = title_elem.find('span')
+                    if title_span:
+                        title = title_span.get_text(strip=True)
+                    else:
+                        title = title_elem.get_text(strip=True)
                 
-                # Skip ads and non-products
                 if not title or 'shop on ebay' in title.lower():
                     continue
                 
-                # Get price using original approach
-                price_elem = item.find('span', {'class': 's-item__price'})
-                if not price_elem:
-                    continue
-                    
-                price_text = price_elem.get_text(strip=True)
-                price = __ParseRawPrice(price_text)
+                # Get price
+                price = None
+                price_elem = item.find('span', class_='s-item__price')
+                if price_elem:
+                    price_text = price_elem.get_text(strip=True)
+                    price = parsePrice(price_text)
                 
                 if not price or price <= 0:
                     continue
                 
-                # Get shipping (optional)
-                try:
-                    shipping_elem = item.find('span', {'class': 's-item__shipping s-item__logisticsCost'})
-                    if shipping_elem:
-                        shipping_span = shipping_elem.find('span', {'class': 'ITALIC'})
-                        shipping = __ParseRawPrice(shipping_span.get_text(strip=True)) if shipping_span else 0
-                    else:
-                        shipping = 0
-                except:
-                    shipping = 0
-                
                 # Get URL
+                url = ''
                 url_elem = item.find('a')
-                url = url_elem['href'] if url_elem else ''
+                if url_elem and url_elem.get('href'):
+                    url = url_elem.get('href')
+                    if '?' in url:
+                        url = url.split('?')[0]
                 
-                # Clean URL
-                if '?' in url:
-                    url = url.split('?')[0]
-                
-                # Create item data in FlipFinder format
+                # Create item data
                 itemData = {
                     'title': title,
                     'price': {
                         'value': price,
                         'currency': 'USD'
                     },
-                    'condition': 'Not specified',  # Could be enhanced
+                    'condition': 'Not specified',
                     'itemWebUrl': url,
                     'soldDate': ''
                 }
                 
                 data.append(itemData)
-                print(f"Successfully parsed: {title} - ${price}")
+                print(f"Parsed item {len(data)}: {title} - ${price}")
                 
-                # ENHANCED: Stop after getting 15 items (so we have enough to return 10)
+                # Stop after getting 15 items
                 if len(data) >= 15:
                     break
                     
             except Exception as e:
-                print(f"Error parsing individual item: {str(e)}")
+                print(f"Error parsing item {i}: {str(e)}")
                 continue
         
-        print(f"Final parsed items count: {len(data)}")
+        print(f"Successfully parsed {len(data)} items")
         return data
         
     except Exception as e:
         print(f"Error in __ParseItems: {str(e)}")
         return []
 
-def __ParseRawPrice(string):
-    """Original ParseRawPrice function from GitHub project"""
+def parsePrice(priceString):
+    """Enhanced price parsing function"""
     try:
-        parsedPrice = re.search(r'(\d+(?:\.\d+)?)', string.replace(',', '.'))
-        if parsedPrice:
-            return float(parsedPrice.group())
-        else:
+        if not priceString:
             return None
-    except:
+        
+        # Clean the string
+        cleaned = priceString.replace('$', '').replace('USD', '').replace('AU$', '').replace('CA$', '').strip()
+        
+        # Handle comma-separated numbers
+        if ',' in cleaned:
+            cleaned = cleaned.replace(',', '')
+        
+        # Extract price with regex
+        match = re.search(r'(\d+\.?\d*)', cleaned)
+        if match:
+            price = float(match.group(1))
+            if 0 < price < 1000000:  # Sanity check
+                return price
+        
+        return None
+        
+    except Exception as e:
+        print(f"Price parsing error for '{priceString}': {e}")
         return None
 
 # Test function
 if __name__ == "__main__":
-    print("Testing with ENHANCED 10-item approach...")
+    print("Testing enhanced scraper...")
     result = get_sold_listings_for_flipfinder("iPhone 12")
     
     print("\n=== TEST RESULTS ===")
     print(f"Success: {result['success']}")
     print(f"Total items: {result['total']}")
-    print(f"Average price: ${result['average_price']}")
     
     if result['success'] and result['items']:
         print(f"\nItems returned:")
