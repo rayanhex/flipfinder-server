@@ -134,10 +134,9 @@ def __GetHTML(query, country='us', condition='all', type='all', alreadySold=True
         
         request = urllib.request.Request(url, headers=headers)
         
-        # Slightly increased delay but not too much
-        delay = random.uniform(3.0, 5.0)
-        print(f"Waiting {delay:.1f} seconds before request...")
-        time.sleep(delay)
+        # REMOVED: No more delay - let's go fast!
+        # delay = random.uniform(3.0, 5.0)
+        # time.sleep(delay)
         
         response = urllib.request.urlopen(request, context=ssl_context, timeout=30)
         html_content = response.read()
